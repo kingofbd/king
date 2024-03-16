@@ -27,3 +27,5 @@ daemonize yes
 #密码，根据需要进行设定
 requirepass 123456
 ```
+
+
