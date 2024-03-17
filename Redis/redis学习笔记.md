@@ -243,3 +243,277 @@ zset具备下列特性
 zset常见的命令有
 
 * zadd key score member 添加一个或多个元素到zset，如果已经存在则更新其score值
+* zrem key member 删除zset中的一个指定元素
+* zscore key member 获取zset中指定元素的score值
+* zrank key member 获取zset中指定元素的排名
+* zcard key 获取zset中的元素个数
+* zcount key min max 统计score值在给定范围内的所有元素的个数
+* zincrby key increment member 让zset中的指定元素自增，步长为指定的increment值
+* zrange key min max 按照score排序后，获取指定排名范围内的元素
+* zrangebyscore key min max 按照score排序后，获取指定score范围内的元素
+* zdiff、zinter、zunion 求差集、交集、并集
+
+注意：所有的排名默认都是升序，如果要降序则在命令的“z”后面添加“rev”即可。
+
+**zset的练习**
+
+将班级中的下列学生得分信息通过zset存入redis中，如下
+
+jack 85,lucy 89,rose 82,tom 95,jerry 78,amy 92,miles 76
+
+```shell
+127.0.0.1:6379> zadd stu 85 jack 89 lucy 82 rose 95 tom 78 jerry 92 amy 76 miles
+(integer) 7
+```
+
+求解如下功能
+
+* 删除tom同学
+
+使用zrem命令即可，如下
+
+```shell
+127.0.0.1:6379> zrem stu tom
+(integer) 1
+```
+
+* 获取amy同学的分数
+
+使用zscore命令即可，如下
+
+```shell
+127.0.0.1:6379> zscore stu amy
+"92"
+```
+
+* 获取rose同学的排名
+
+这里需要注意一点，默认排名是升序，如果想获取升序排名，则使用zrank命令，如果想获取降序排名，则使用zrevrank命令，如下
+
+```shell
+127.0.0.1:6379> zrank stu rose
+(integer) 2
+127.0.0.1:6379> zrevrank stu rose
+(integer) 3
+```
+
+* 查询80分以下有几个学生
+
+使用zcount命令即可，如下
+
+```shell
+127.0.0.1:6379> zcount stu 0 80
+(integer) 2
+```
+
+* 给amy同学加2分
+
+使用zincrby命令即可，如下
+
+```shell
+127.0.0.1:6379> zincrby stu 2 amy
+"94"
+```
+
+* 查询成绩前3名的同学
+
+首先是降序排序，然后使用zrange命令即可，如下
+
+```shell
+127.0.0.1:6379> zrevrange stu 0 2
+1) "amy"
+2) "lucy"
+3) "jack"
+```
+
+* 查出成绩80分以下的所有同学
+
+使用zrangebyscore命令即可，如下
+
+```shell
+127.0.0.1:6379> zrangebyscore stu 0 80
+1) "miles"
+2) "jerry"
+```
+
+# redis的java客户端
+
+redis的java客户端，常用的有以下三种。
+
+* jedis 以redis命令作为方法名称，学习成本低，简单实用。但是jedis实例是线程不安全的，多线程环境下需要基于连接池来使用。
+* lettuce 基于netty实现的，支持同步，异步和响应式编程方式，并且是线程安全的。支持redis的哨兵模式，集群模式和管道模式。
+* redisson 是一个基于redis实现的分布式，可伸缩的java数据结构集合。包含了诸如map、queue、lock、semaphore、atomiclong等强大功能。
+
+## jedis
+
+使用jedis需要先导入依赖
+
+```shell
+<dependency>
+    <groupId>redis.clients</groupId>
+    <artifactId>jedis</artifactId>
+    <version>5.1.2</version>
+</dependency>
+```
+
+实现一段简单的测试代码
+
+```java
+package redis;
+
+import redis.clients.jedis.Jedis;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 21:04 2024/3/17
+ */
+public class JedisTest {
+    private static Jedis jedis;
+    public static void main(String[] args) {
+        //建立连接
+        jedis = new Jedis("localhost", 6379);
+        //设置密码
+        jedis.auth("123456");
+        //选择库
+        jedis.select(0);
+        //插入数据
+        jedis.set("name", "张三");
+        //获取数据
+        System.out.println(jedis.get("name"));
+        //关闭连接
+        jedis.close();
+    }
+}
+
+```
+
+jedis本身是线程不安全的，并且频繁的创建和销毁连接会有性能损耗，因此更推荐使用jedis连接池来替代jedis的直连方式。
+
+下面是一段jedis连接池的示例代码
+
+```java
+package redis;
+
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 21:29 2024/3/17
+ */
+public class JedisPoolTest {
+    private static final JedisPool jedisPool;
+    static {
+        //配置连接池
+        JedisPoolConfig config = new JedisPoolConfig();
+        //最大连接
+        config.setMaxTotal(8);
+        //最大空闲连接
+        config.setMaxIdle(8);
+        //最小空闲连接
+        config.setMinIdle(0);
+        //最大等待时间
+        config.setMaxWaitMillis(5000);
+        jedisPool = new JedisPool(config, "localhost", 6379, 1000, "123456");
+    }
+    public static void main(String[] args) {
+        //从连接池中获取一个jedis连接
+        Jedis jedis = jedisPool.getResource();
+        //选择库
+        jedis.select(0);
+        //插入数据
+        jedis.hset("person", "name", "李四");
+        jedis.hset("person", "age", "18");
+        //关闭连接（归还连接到连接池）
+        jedis.close();
+    }
+}
+
+```
+
+## spring data redis
+
+springdata是spring中数据操作的模块，包含对各种数据库的集成，其中对redis的集成模块就叫做spring data redis
+
+* 提供了对不同redis客户端的整合（lettuce和jedis）
+* 提供了redisTemplate统一api来操作redis
+* 支持redis的发布订阅模型
+* 支持redis哨兵和redis集群
+* 支持基于lettuce的响应式编程
+* 支持基于jdk、json、字符串、spring对象的数据序列化和反序列化
+* 支持基于redis的jdk collection实现
+
+spring data redis中提供了redisTemplate工具类，其中封装了各种对redis的操作。并且将不同数据类型的操作api封装到了不同的类型中
+
+![img.png](img/img_2.png)
+
+若要使用spring data redis，必须先引入依赖如下
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+    <version>2.4.1</version>
+</dependency>
+```
+
+```xml
+<dependency>
+    <groupId>org.apache.commons</groupId>
+    <artifactId>commons-pool2</artifactId>
+    <version>2.11.1</version>
+</dependency>
+```
+
+然后在springboot工程的yaml配置文件中编辑连接信息
+
+```yaml
+spring:
+  redis:
+    host: localhost
+    port: 6379
+    password: 123456
+    lettuce:
+      pool:
+        max-active: 8 # 最大连接
+        max-wait: 100 # 连接等待时间
+        max-idle: 8 # 最大空闲连接
+        min-idle: 0 # 最小空闲连接
+```
+
+然后编写服务类，注入redisTemplate，进行使用，样例代码如下
+
+```java
+package redis;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 22:44 2024/3/17
+ */
+@Service
+public class SpingDataRedisTest {
+    //自动装配 RedisTemplate
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @PostConstruct
+    public void init() {
+        //插入一条string类型数据
+        redisTemplate.opsForValue().set("name", "spring");
+        //对数据进行读取
+        Object name = redisTemplate.opsForValue().get("name");
+        System.out.println(name);
+    }
+}
+
+```
