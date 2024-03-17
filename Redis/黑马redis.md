@@ -74,9 +74,28 @@ redis的key允许有多个单词形成层级结构，多个单词之间使用冒
 
 如果value是一个java对象，则可以将对象序列化成json字符串后存储，比如
 
-| key            | value                                 |
-| -------------- | ------------------------------------- |
-| king:user:1    | {"id":1,"name":"jack","age":18}       |
-| king:product:1 | {"id":1,"name":"小米11","price":4999} |
+![img.png](img.png)
 
-的
+# hash
+
+hash类型，也叫散列，其value是一个无序字典，类似于java中的hashmap结构。
+
+string结构是将对象序列化为json字符串后存储，当需要修改对象某个字段时很不方便。
+
+![img.png](img.png)
+
+hash结构可以将对象中的每个字段独立存储，可以针对单个字段做crud
+
+![img_1.png](img_1.png)
+
+hash的常见命令有
+
+* hset key field value 添加或者修改hash类型key的field的值
+* hget key field 获取一个hash类型key的field的值
+* hmset 批量添加多个hash类型key的field的值
+* hmget 批量获取多个hash类型key的field的值
+* hgetall 获取一个hash类型的key中的所有的field和value
+* hkeys 获取一个hash类型的key中的所有的field
+* hvals 获取一个hash类型的key中的所有的value
+* hincrby 让一个hash类型key的字段值自增并指定步长
+* hsetnx 添加一个hash类型的key的field值，前提是这个field不存在，否则不执行
