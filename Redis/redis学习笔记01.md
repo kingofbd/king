@@ -1,4 +1,4 @@
-# Redis的介绍
+# redis的介绍
 
 redis是一个基于内存的键值型nosql数据库。 特征：
 
