@@ -588,7 +588,7 @@ public class RedisConfig {
 private RedisTemplate<String, Object> redisTemplate;
 ```
 
-因为我们在代码中显示的使用@Bean声明了一个RedisTemplate，所以在使用时，通过@Autowired引入的就是我们声明的带有序列化器的那个。
+因为我们在代码中显式的使用@Bean声明了一个RedisTemplate，所以在使用时，通过@Autowired引入的就是我们声明的带有序列化器的那个。
 
 再次运行代码显示结果正常。
 
@@ -652,7 +652,9 @@ public class SpingDataRedisTest {
 
 验证结果正常
 
-![img_4.png](img/img_4.png)
+```json
+{"@class":"redis.User","name":"周杰伦","age":50}
+```
 
 虽然对value采用json的序列化方式可以满足我们的需求，但依然存在一些问题，就拿上面存入User类型对象来说，除了对象的私有属性外，还额外的存储了对象的class类型。
 
@@ -707,4 +709,6 @@ public class SpingDataRedisTest {
 
 存入的数据结果也是正常的，而且没有了class类型。
 
-![img_5.png](img/img_5.png)
+```json
+{"name":"蔡依林","age":45}
+```
