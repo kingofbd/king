@@ -74,7 +74,7 @@ redis的key允许有多个单词形成层级结构，多个单词之间使用冒
 
 如果value是一个java对象，则可以将对象序列化成json字符串后存储，比如
 
-![img.png](img.png)
+![img.png](img/img.png)
 
 # hash
 
@@ -82,11 +82,11 @@ hash类型，也叫散列，其value是一个无序字典，类似于java中的h
 
 string结构是将对象序列化为json字符串后存储，当需要修改对象某个字段时很不方便。
 
-![img.png](img.png)
+![img.png](img/img.png)
 
 hash结构可以将对象中的每个字段独立存储，可以针对单个字段做crud
 
-![img_1.png](img_1.png)
+![img_1.png](img/img_1.png)
 
 hash的常见命令有
 
