@@ -517,3 +517,194 @@ public class SpingDataRedisTest {
 }
 
 ```
+
+但是上面的代码，在运行之后，是有问题的。那就是我们存入到redis中的key，本应该是name，value本应该是spring，但是却出现了如下的情况
+
+```shell
+127.0.0.1:6379> keys * 
+1) "\xac\xed\x00\x05t\x00\x04name"
+127.0.0.1:6379> get "\xac\xed\x00\x05t\x00\x04name"
+"\xac\xed\x00\x05t\x00\x06spring"
+```
+
+数据的编码出现了问题，问题的根本原因出在序列化上。
+
+redisTemplate可以接收任意object作为值写入redis，只不过写入前会把object序列化成字节形式，默认是采用jdk序列化（JdkSerializationRedisSerializer），而这种序列化方式的缺点很明显
+
+* 可读性差
+* 内存占用较大
+
+redisTemplate的key和value的序列化器RedisSerializer，有以下几种实现
+
+![img_3.png](img/img_3.png)
+
+key通常采用的是StringRedisSerializer，而value通常采用的是GenericJackson2JsonRedisSerializer，所以需要我们在代码中进行指定。
+
+下面是一段自定义redisTemplate的序列化器的代码，如下
+
+```java
+package redis;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializer;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 01:37 2024/3/18
+ */
+@Configuration
+public class RedisConfig {
+    @Bean
+    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
+        //创建 RedisTemplate
+        RedisTemplate<String, Object> template = new RedisTemplate<>();
+        //设置连接工厂
+        template.setConnectionFactory(factory);
+        //设置序列化器
+        GenericJackson2JsonRedisSerializer jsonRedisSerializer = new GenericJackson2JsonRedisSerializer();
+        //设置key的序列化器
+        template.setKeySerializer(RedisSerializer.string());
+        template.setHashKeySerializer(RedisSerializer.string());
+        //设置value的序列化器
+        template.setValueSerializer(jsonRedisSerializer);
+        template.setHashValueSerializer(jsonRedisSerializer);
+        //返回
+        return template;
+    }
+}
+
+```
+
+然后修改一下我们的服务类中RedisTemplate的泛型即可。如下
+
+```java
+//自动装配 RedisTemplate
+@Autowired
+private RedisTemplate<String, Object> redisTemplate;
+```
+
+因为我们在代码中显示的使用@Bean声明了一个RedisTemplate，所以在使用时，通过@Autowired引入的就是我们声明的带有序列化器的那个。
+
+再次运行代码显示结果正常。
+
+我们也可以往redis中存入java对象。首先创建一个User类型的对象如下
+
+```java
+package redis;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 01:50 2024/3/18
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class User {
+    private String name;
+    private int age;
+}
+
+```
+
+然后编写我们的服务类如下
+
+```java
+package redis;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 22:44 2024/3/17
+ */
+@Service
+public class SpingDataRedisTest {
+    //自动装配 RedisTemplate
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
+
+    @PostConstruct
+    public void init() {
+        //插入一条user类型数据
+        redisTemplate.opsForValue().set("user", new User("周杰伦", 50));
+        //对数据进行读取
+        User user = (User) redisTemplate.opsForValue().get("user");
+        System.out.println(user);
+    }
+}
+
+```
+
+验证结果正常
+
+![img_4.png](img/img_4.png)
+
+虽然对value采用json的序列化方式可以满足我们的需求，但依然存在一些问题，就拿上面存入User类型对象来说，除了对象的私有属性外，还额外的存储了对象的class类型。
+
+为了在反序列化时知道对象的类型，json序列化器会将类的class信息写入到json结果中，会带来额外的内存开销。
+
+为了节省内存空间，我们并不会使用json序列化器来处理value，而是统一使用string序列化器，要求只能存储string类型的key和value。当需要存储java对象时，手动完成对象的序列化和反序列化。
+
+spring默认提供了一个StringRedisTemplate类，它的key和value的序列化方式默认就是string方式。省去了我们自定义RedisTemplate的过程。
+
+下面的代码举例说明了该如何进行使用
+
+```java
+package redis;
+
+import org.codehaus.jackson.map.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.IOException;
+
+/**
+ * @Author: Spring
+ * @Description:
+ * @Date: Created on 22:44 2024/3/17
+ */
+@Service
+public class SpingDataRedisTest {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    //自动装配 RedisTemplate
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    @PostConstruct
+    public void init() throws IOException {
+        //准备user对象
+        User user = new User("蔡依林", 45);
+        //手动进行序列化
+        String data = MAPPER.writeValueAsString(user);
+        //写入数据
+        redisTemplate.opsForValue().set("cyl", data);
+        //对数据进行读取
+        String result = redisTemplate.opsForValue().get("cyl");
+        //手动进行反序列化
+        User userResult = MAPPER.readValue(result, User.class);
+        System.out.println(userResult);
+    }
+}
+
+```
+
+存入的数据结果也是正常的，而且没有了class类型。
+
+![img_5.png](img/img_5.png)
