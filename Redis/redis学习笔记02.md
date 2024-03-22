@@ -42,9 +42,9 @@ spring:
 
 主要是修改连接地址，数据库名称，用户名和密码等信息。
 
-接下来就是找到工程中的HmDianPingApplication类，启动springboot应用程序。应用程序启动成功之后，访问http://localhost:8081/shop-type/list，如果可以看到数据则证明运行没有问题。
+接下来就是找到工程中的HmDianPingApplication类，启动springboot应用程序。应用程序启动成功之后，访问 http://localhost:8081/shop-type/list ，如果可以看到数据则证明运行没有问题。
 
-再接下来就是要部署前端的项目，在file目录下有一个nginx-1.18.0.zip压缩文件，将其进行解压，然后将文件夹放入到一个没有中文和特殊字符的目录下，然后直接启动目录下的nginx.exe即可。启动之后可访问http://localhost:8080进行查看。
+再接下来就是要部署前端的项目，在file目录下有一个nginx-1.18.0.zip压缩文件，将其进行解压，然后将文件夹放入到一个没有中文和特殊字符的目录下，然后直接启动目录下的nginx.exe即可。启动之后可访问 http://localhost:8080 进行查看。
 
 ### 基于session实现登录
 
