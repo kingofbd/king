@@ -400,7 +400,110 @@ Domain类型是特定实现的类型，目前支持IPv4和IPv6两类，本质上
 
 # 数据库引擎
 
+clickhouse中支持在创建数据库时指定引擎，目前比较常用的两种引擎是默认引擎和MySQL引擎。
 
+## Ordinary默认引擎
+
+ordinary就是clickhouse中默认引擎，如果不指定数据库引擎创建的就是ordinary数据库引擎，在这种数据库下面可以使用任意表引擎。创建时需要注意，ordinary首字母要大写，不然会抛出异常。
+
+## MySQL引擎
+
+mysql引擎用于将远程的mysql服务器中的表映射到clickhouse中，并允许对表进行insert插入和select查询，方便在clickhouse与mysql之间进行数据交换。这里不会将mysql的数据同步到clickhouse中，clickhouse就像一个壳子，可以将mysql的表映射成clickhouse表，使用clickhouse查询mysql中的数据，在mysql中进行的crud操作，可以同时映射到clickhouse中。
+
+mysql数据库引擎会将对其的查询转换为mysql语法并发送到mysql服务器中，因此可以执行诸如show tables之类的操作，但是不允许创建表，修改表，删除表，删除数据，更新数据等操作。
+
+在clickhouse中，创建mysql引擎表的语句如下
+
+```sql
+create database [if not exists] db_name [on cluster cluster_name]
+       engine = MySQL('host:port','database','user','password')
+```
+
+以上语句中的参数解释如下
+
+* host:port mysql的连接地址和端口号
+* database 要连接的mysql数据库名称
+* user mysql连接的用户名
+* password mysql连接的密码
+
+在clickhouse中使用mysql引擎建库，将mysql库中的数据映射到clickhouse中，mysql库中表字段类型与clickhouse表字段类型的映射如下，这里每种类型在clickhouse中都支持Nullable，即可空。
+
+![img_6.png](img/img_6.png)
+
+下面举例说明mysql引擎建库
+
+首先，mysql中有一个数据库wcq，下面有很多的表，如下
+
+```sql
+mysql> use wcq;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++--------------------+
+| Tables_in_wcq      |
++--------------------+
+| tb_blog            |
+| tb_blog_comments   |
+| tb_follow          |
+| tb_seckill_voucher |
+| tb_shop            |
+| tb_shop_type       |
+| tb_sign            |
+| tb_user            |
+| tb_user_info       |
+| tb_voucher         |
+| tb_voucher_order   |
++--------------------+
+11 rows in set (0.00 sec)
+```
+
+接下来在clickhouse中，创建新的库，与mysql中的wcq库进行关联。语法如下
+
+```sql
+create database if not exists testdb engine=MySQL('localhost:3306','wcq','root','12345678');
+```
+
+然后在clickhouse中查看testdb这个库下面的表，是否和mysql中的wcq库下的表一致。
+
+```sql
+kingdemacbook-pro.local :) use testdb;
+
+USE testdb
+
+Query id: 12252594-cb5b-4067-a28b-3d18b923a1de
+
+Ok.
+
+0 rows in set. Elapsed: 0.005 sec. 
+
+kingdemacbook-pro.local :) show tables;
+
+SHOW TABLES
+
+Query id: d1cf28c7-bca4-4b25-ac33-7c4d99cd403f
+
+┌─name───────────────┐
+│ tb_blog            │
+│ tb_blog_comments   │
+│ tb_follow          │
+│ tb_seckill_voucher │
+│ tb_shop            │
+│ tb_shop_type       │
+│ tb_sign            │
+│ tb_user            │
+│ tb_user_info       │
+│ tb_voucher         │
+│ tb_voucher_order   │
+└────────────────────┘
+
+11 rows in set. Elapsed: 0.013 sec.
+```
+
+然后在mysql中所做的任何操作，都能实时的映射到clickhouse中。在clickhouse中的操作，也可以映射到mysql中，但是仅仅限于查询和插入数据，不支持删除修改表和数据。
+
+# 表引擎
 
 
 
