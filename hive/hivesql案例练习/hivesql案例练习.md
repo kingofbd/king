@@ -652,33 +652,43 @@ order by t4.avg_score desc;
 首先准备数据如下，建表语句省略，只将用到的表的结构整理如下
 
 用户信息表user_info
+
 ![img_4.png](img/img_4.png)
 
 商品信息表sku_info
+
 ![img_5.png](img/img_5.png)
 
 商品分类信息表category_info
+
 ![img_6.png](img/img_6.png)
 
 订单信息表order_info
+
 ![img_7.png](img/img_7.png)
 
 订单明细表order_detail
+
 ![img_8.png](img/img_8.png)
 
 登录明细表user_login_detail
+
 ![img_9.png](img/img_9.png)
 
 商品价格变更明细表sku_price_modify_detail
+
 ![img_10.png](img/img_10.png)
 
 配送信息表delivery_info
+
 ![img_11.png](img/img_11.png)
 
 好友关系表friendship_info
+
 ![img_12.png](img/img_12.png)
 
 收藏信息表favor_info
+
 ![img_13.png](img/img_13.png)
 
 ## 初级
@@ -1017,8 +1027,44 @@ from (
 group by t3.login_ts;
 ```
 
-### 
+### 统计每个用户每天的登录总次数以及交易总次数
 
+分析题目需求，如果想统计每个用户每天的登录总次数，应该查询登录明细表，按照用户id和登录时间进行分组，然后求count计数得到登录总次数。
+
+如果想统计每个用户每天的交易总次数，需要查询的是配送信息表，因为能配送证明肯定是下单并支付产生了交易，因为没有支付表，所以本题应该查询配送信息表，按照用户id和下单日期进行分组，然后求count计数得到交易总次数。（这里假设用户登录的时间和下单日期是同一天）。
+
+然后对上面两个步骤得到的中间结果表进行关联，需要注意的是，要拿登录结果表left join交易结果表，因为用户登录了并不一定产生交易行为，所以需要采用左外连接的方式。关联的条件就是登录结果表的用户id和交易结果表的用户id相同，并且登录结果表的登录日期和交易结果表的下单日期相同。综上，语句如下
+
+```sql
+select
+    t1.user_id,
+    t1.login_ts,
+    t1.total_login_count,
+    --需要对null值进行补0处理（因为有登录不代表一定有交易）
+    nvl(t2.total_order_count,0)
+from (
+    --查询登录明细表，获得每个用户每天的登录总次数
+    select
+        user_id,
+        date_format(login_ts,'yyyy-MM-dd') as login_ts,
+        count(*) as total_login_count
+    from user_login_detail
+    group by user_id,date_format(login_ts,'yyyy-MM-dd')
+) t1
+left join (
+    --查询配送信息表，获得每个用户每天的交易总次数
+    select
+        user_id,
+        order_date,
+        count(*) as total_order_count
+    from delivery_info
+    group by user_id,order_date
+) t2
+--关联条件是用户id一样，并且登录时间和下单日期一样
+on t1.user_id=t2.user_id and t1.login_ts=t2.order_date;
+```
+
+### 
 
 
 
