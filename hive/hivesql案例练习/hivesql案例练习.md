@@ -1064,7 +1064,21 @@ left join (
 on t1.user_id=t2.user_id and t1.login_ts=t2.order_date;
 ```
 
+### 统计每个商品各年度的销售总额
+
+根据题目需求，统计每个商品各年度的销售总额，应该是查询订单明细表，按照商品id和下单日期（处理成年份）进行分组，然后对销售额进行求和即可。需要注意的是，订单明细表中并没有直接的订单金额，销售额的计算，需要根据下单商品件数乘以商品单价来进行计算。综上，语句如下
+
+```sql
+select
+    sku_id,
+    year(create_date) as year_date,
+    sum(sku_num * price) as total_amount
+from order_detail
+group by sku_id,year(create_date);
+```
+
 ### 
+
 
 
 
