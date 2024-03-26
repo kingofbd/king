@@ -1077,19 +1077,133 @@ from order_detail
 group by sku_id,year(create_date);
 ```
 
-### 
+### 统计2021年全年，每个商品，按每周的每一天为粒度，从周一到周日每天的销售情况
 
+分析题目，要求的是2021年全年的订单中，商品会按照周一到周日这7天中的每一天为粒度，汇总商品周一到周日每天的销售情况。查询的是订单明细表，通过where条件过滤出2021年的数据，然后对下单日期使用dayofweek函数进行处理，该函数会返回这一天属于周几，并打上标记。
 
+对上一步中得到的结果表，按照商品id进行分组，然后使用sum(if())函数对周几的标记进行判断，分别进行累加即可。语句如下
 
+```sql
+select
+    t1.sku_id,
+    sum(if(t1.flag=2,t1.sku_num,0)) as '周一',
+    sum(if(t1.flag=3,t1.sku_num,0)) as '周二',
+    sum(if(t1.flag=4,t1.sku_num,0)) as '周三',
+    sum(if(t1.flag=5,t1.sku_num,0)) as '周四',
+    sum(if(t1.flag=6,t1.sku_num,0)) as '周五',
+    sum(if(t1.flag=7,t1.sku_num,0)) as '周六',
+    sum(if(t1.flag=1,t1.sku_num,0)) as '周日'
+from (
+    select
+        sku_id,
+        dayofweek(create_date) as flag,
+        sku_num
+    from order_detail
+    where year(create_date)=2021
+) t1
+group by t1.sku_id;
+```
 
+### 在订单明细表中，统计同一个商品在2020年和2021年的同一个月份中的销量对比
 
+分析题目，说的很明确，要统计的是同一个商品同一个月份，在2020年和2021年的销量分别是多少。查询订单明细表，首先通过where条件过滤出2020年和2021年的数据，然后按照商品id和经过处理之后的下单月份进行分组，然后使用sum(if())函数对下单的日期进行判断，分别统计到2020年的销量和2021年的销量中。语句如下
+
+```sql
+select
+    sku_id,
+    month(create_date) as each_month,
+    --分别统计2020年的销量和2021年的销量
+    sum(if(year(create_date)=2020,sku_num,0)) as total_2020,
+    sum(if(year(create_date)=2021,sku_num,0)) as total_2021
+from order_detail
+--过滤出2020年和2021年的数据
+where year(create_date)=2020 or year(create_date)=2021
+--按照商品id和月份分组
+group by sku_id,month(create_date);
+```
+
+### 查询2021年国庆期间（10月1号~10月7号），每个商品的购买总量和收藏总量
+
+分析题目，要获得购买总量，那么应该从订单明细表中查询，通过where条件过滤出10月1号到10月7号的数据，然后按照商品id进行分组，对商品的下单件数求sum总和即可。
+
+要获得收藏总量，需要查询收藏信息表，同样是通过where条件过滤出10月1号到10月7号的数据，然后按照商品id进行分组，然后求count计数统计即可。
+
+最后，对上面两个步骤得到的中间结果表，通过商品id进行join，但是注意的是，需要使用全外连接full join，因为购买过不一定收藏过，收藏过也不一定购买过，所以两张表应该是全外连接。
+
+```sql
+select
+    --这里需要对null值进行判空处理
+    nvl(t1.sku_id,t2.sku_id),
+    nvl(t1.total_order_count,0)
+    nvl(t2.total_favor_count,0)
+from (
+    select
+        sku_id,
+        sum(sku_num) as total_order_count
+    from order_detail
+    where create_date>='2021-10-01' and create_date<='2021-10-07'
+    group by sku_id
+) t1
+full join (
+    select 
+        sku_id,
+        count(*) as total_favor_count
+    from favor_info
+    where create_date>='2021-10-01' and create_date<='2021-10-07'
+    group by sku_id
+) t2
+on t1.sku_id=t2.sku_id;
+```
+
+### 查询2021年国庆期间（10月1号~10月7号），各商品品类的动销率和滞销率
+
+先来解释下名词，所谓动销率，就是指在一段时间内有销量的商品品类数占当前已经上架的所有商品品类数的比例，即（有销量的商品种类数/已上架的总商品种类数），而滞销率和动销率正好相反，指的是没有销量的商品种类数占已经上架的总商品种类数的比例，在运算上就是1减去动销率。
+
+分析题目需求，查询的是2021年国庆的数据，而且统计的是商品品类的动销率和滞销率。所以查询订单明细表的同时，还要查询商品信息表。两张表通过商品的id进行关联，而且要使用左外关联left join，而且商品信息表必须在左边，因为统计的是商品品类的动销率，品类信息是不能够遗漏的。这样首先把2021年国庆节期间商品的明细查询出来（包含了商品的品类）。
+
+然后再对上一步得到的结果，按照商品的品类进行分组，在查询条件处，按照动销率的定义，是有销量的商品品类数除以所有已经上架的商品品类数。有销量的商品品类数，可以通过count计数统计得到，在统计时，使用if判断下单日期是当天的，如果存在下单记录，则商品id所对应的商品品类统计在内，如果不存在，则为null。已经上架的商品品类数，也可以通过count计数统计得到，但是在统计时，要使用if函数判断那些商品上架日期小于等于当天日期的商品，如果满足条件，则商品id所对应的商品品类统计在内，不满足则为null。
+
+上面在统计有销量的商品品类数和已经上架的所有商品品类数时，因为数据主要是通过订单明细表来的，商品信息表只是补充了品类信息，在订单明细表中，可能会存在多条同一个商品的购买记录，这样对应出来的商品品类也会重复有多条，而我们要统计的是品类的总数，所以在count函数使用时，记得要去重。
+
+```sql
+select 
+    t1.category_id,
+    --有销量的商品的品类数就是在这一天有下单时间，记得要去重。已经上架的所有商品的品类数就是，就是商品的上架时间小于等于下单这一天时间的，记得去重。
+    count(distinct if(t2.create_date='2021-10-01',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-01',t1.sku_id,null)) as sale_10_1,
+    (1 - count(distinct if(t2.create_date='2021-10-01',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-01',t1.sku_id,null))) as unsale_10_1,
+    count(distinct if(t2.create_date='2021-10-02',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-02',t1.sku_id,null)) as sale_10_2,
+    (1 - count(distinct if(t2.create_date='2021-10-02',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-02',t1.sku_id,null))) as unsale_10_2,
+    count(distinct if(t2.create_date='2021-10-03',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-03',t1.sku_id,null)) as sale_10_3,
+    (1 - count(distinct if(t2.create_date='2021-10-03',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-03',t1.sku_id,null))) as unsale_10_3,
+    count(distinct if(t2.create_date='2021-10-04',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-04',t1.sku_id,null)) as sale_10_4,
+    (1 - count(distinct if(t2.create_date='2021-10-04',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-04',t1.sku_id,null))) as unsale_10_4,
+    count(distinct if(t2.create_date='2021-10-05',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-05',t1.sku_id,null)) as sale_10_5,
+    (1 - count(distinct if(t2.create_date='2021-10-05',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-05',t1.sku_id,null))) as unsale_10_5,
+    count(distinct if(t2.create_date='2021-10-06',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-06',t1.sku_id,null)) as sale_10_6,
+    (1 - count(distinct if(t2.create_date='2021-10-06',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-06',t1.sku_id,null))) as unsale_10_6,
+    count(distinct if(t2.create_date='2021-10-07',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-07',t1.sku_id,null)) as sale_10_7,
+    (1 - count(distinct if(t2.create_date='2021-10-07',t1.sku_id,null)) / count(distinct if(t1.from_date<='2021-10-07',t1.sku_id,null))) as unsale_10_7
+from sku_info t1
+left join (
+    --从订单明细表中过滤出来国庆期间的数据
+    select
+        sku_id,
+        create_date
+    from order_detail
+    where create_date>='2021-10-01' and create_date<='2021-10-07'
+) t2
+--和商品信息表关联，补全品类信息
+on t1.sku_id=t2.sku_id
+--按照品类信息进行分组
+group by t1.category_id;
+```
 
 ## 中级
 
+中级题目使用的表和初级是一样的，特此说明。
+
+### 查询累积销量排名第二的商品
+
+分析题目，因为涉及到商品的具体销量，那肯定是要查询订单明细表的。
+
 ## 高级
-
-
-
-
-
-
