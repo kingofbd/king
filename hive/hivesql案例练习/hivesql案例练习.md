@@ -1202,8 +1202,153 @@ group by t1.category_id;
 
 中级题目使用的表和初级是一样的，特此说明。
 
-### 查询累积销量排名第二的商品
+### 查询累积销量排名第二的商品，如果有多个排名第二的商品，则要全部返回
 
-分析题目，因为涉及到商品的具体销量，那肯定是要查询订单明细表的。
+分析题目，因为涉及到商品的具体销量，那肯定是要查询订单明细表的。因为涉及到排名，而且相同排名的要求全部保留，所以使用rank函数更为合适。
+
+首先查询订单明细表，按照商品id进行分组，对下单数量进行sum求和，这是第一步。然后对上一步得到的结果，使用rank函数，按照总的下单数量进行降序排序，打上编号，这是第二步。最后对上一步得到的结果进行子查询，过滤条件就是编号等于2即可。
+
+```sql
+select
+    t2.sku_id
+from (
+    select 
+        t1.sku_id,
+        t1.total_count,
+        --对下单总数量进行降序排序后打上编号
+        rank() over(order by t1.total_count desc) as rk
+    from (
+        --查询订单明细表，按照商品id进行分组后求下单数量总和
+        select
+            sku_id,
+            sum(sku_num) as total_count
+        from order_detail
+        group by sku_id
+    ) t1
+) t2
+--过滤出排名第二的商品
+where t2.rk=2;
+```
+
+### 查询至少连续三天下单的用户
+
+分析题目，有关于用户下单相关的信息，要查询的是订单信息表。一个用户，在某一天可能存在多次下单的行为，所以我们首先要做的就是去重，保证一个用户在某一天的下单行为，只保留一次记录即可。这需要查询订单信息表，按照用户和下单日期进行分组即可。
+
+第二步，对于上一步得到的结果，使用lag函数和lead函数，对用户进行分组，对用户的下单日期，分别获取他上一次的下单日期，当前的下单日期，下一次的下单日期，然后进行日期间求差值。分别求当前下单日期和上一次下单日期的差值，以及下一次下单日期和当前下单日期的差值。
+
+如果一个用户连续三天下单，那么需要满足的条件就是当前下单日期和上一次的下单日期的差值是1天，下一次的下单日期和当前下单日期的差值也是1天。在上一步得到的结果之上，将刚才的条件作为过滤，即可筛选出符合条件的用户，但是需要注意的是，一个用户可能存在多次连续三天下单的情况，所以得到的结果还要进行一下去重。
+
+```sql
+select
+    --一个用户可能存在多次连续三天下单的行为，所以这里要去重
+    distinct t2.user_id
+from (
+    select 
+        t1.user_id,
+        --上次的下单日期和当前下单日期求差值
+        datediff(t1.create_date - lag(t1.create_date) over(partition by t1.user_id order by t1.create_date)) as last_and_current,
+        --下次的下单日期和当前下单日期求差值
+        datediff(lead(t1.create_date) over(partition by t1.user_id order by t1.create_date) - t1.create_date)  as current_and_next
+    from (
+        --对用户和下单日期进行去重，保证一个用户一天的多次下单只保留一条记录
+        select
+            user_id,
+            create_date
+        from order_info
+        group by user_id,create_date
+    ) t1
+) t2
+--过滤出两个差值都是1的，就代表了该用户连续三天有过下单行为
+where t2.last_and_current=1
+and t2.current_and_next=1;
+```
+
+这里进阶一下需求，不仅仅要获取连续三天下单的用户，还要将该用户连续三天下单的所有日期呈现出来。
+
+这个需求其实就是在上面需求的基础之上，收集日期，然后配合炸裂函数来解决。在上面的基础之上，当我们通过where条件过滤出符合条件的用户之后，将该用户对应的上一次下单日期，当前下单日期，还有下一次下单日期，通过concat_ws函数进行收集成一行，然后再使用炸裂函数将一行的日期数据炸裂到多行中。同样，由于一个用户可能存在多次连续三天下单的情况，所以炸裂使用的数据可能会是多行，多行数据中可能存在日期重复的问题，那么炸出来的数据也会有日期重复，最后进行去重即可。
+
+```sql
+select
+    --因为一个用户满足连续三天下单的记录可能会有多行，彼此之间可能存在日期重复问题，所以对炸裂之后的结果要进行去重
+    distinct t3.user_id,temp.each_date
+from (
+    select
+        t2.user_id,
+        --对过滤后的符合条件的连续三天下单的用户日期进行收集
+        concat_ws(','t2.last_date,t2.current_date,t2.next_date) as dates
+    from (
+        select 
+            t1.user_id,
+            --上一次的下单日期
+            lag(t1.create_date) over(partition by t1.user_id order by t1.create_date) as last_date,
+            --当前下单日期
+            t1.create_date as current_date,
+            --下一次的下单日期
+            lead(t1.create_date) over(partition by t1.user_id order by t1.create_date) as next_date,
+            --上次的下单日期和当前下单日期求差值
+            datediff(t1.create_date - lag(t1.create_date) over(partition by t1.user_id order by t1.create_date)) as last_and_current,
+            --下次的下单日期和当前下单日期求差值
+            datediff(lead(t1.create_date) over(partition by t1.user_id order by t1.create_date) - t1.create_date)  as current_and_next
+        from (
+            --对用户和下单日期进行去重，保证一个用户一天的多次下单只保留一条记录
+            select
+                user_id,
+                create_date
+            from order_info
+            group by user_id,create_date
+        ) t1
+    ) t2
+    --过滤出两个差值都是1的，就代表了该用户连续三天有过下单行为
+    where t2.last_and_current=1
+    and t2.current_and_next=1
+) t3
+--对收集成一行的日期进行炸裂，分散到多行中
+lateral view explode(split(t3.dates,',')) temp as each_date;
+```
+
+这里再次进阶一下需求，之前求的是至少连续三天下单的用户以及具体的下单时间，现在要求的是至少连续4天，5天，甚至10天连续下单的用户以及具体的下单时间。我们不可能在sql中通过lag以及lead去写出来好几行对应天数的下单日期，而且每次的修改都需要增删改语句，及其的麻烦，不通用。现在考虑一种通用的方式来解决这个问题，那就是依靠等差数列。
+
+过程如下，首先还是查询订单信息表，按照用户id和下单日期做一个去重，保证一个用户一天下的所有下单行为只保留一次记录。
+
+经过去重之后，使用rank开窗函数对每个用户的下单日期进行编号，因为不存在重复记录的问题，所以编号都是从1开始，顺序往后延伸的。同时计算出来每个用户下单日期和编号的差值得到的具体日期。如果说用户的下单日期是连续的，同时编号也是连续的，那么这两者做差得到的应该是同一个日期才对。
+
+接下来对上一步得到的结果，使用count同时配合over开窗，按照同一个用户下计算出来的差值日期进行分组，并进行总量统计，得到的数量就代表了连续几天登录。
+
+最后一步，外层套一个子查询，通过where条件过滤出来连续天数>=n的即可（n是用户自己指定的天数）。
+
+```sql
+select
+    t3.user_id,
+    t3.create_date
+from (
+    select
+        t2.user_id,
+        t2.create_date,
+        --按照用户，和计算后的差值日期进行分组，并统计总量（总量即代表着连续下单的天数）
+        count(*) over(partition by t2.user_id,t2.sub_date) as ct
+    from (
+        select
+            t1.user_id,
+            t1.create_date,
+            --这里使用rank函数对用户的下单日期进行编号，并计算出用户的每一次下单日期和编号的差值所得到的具体日期（如果用户的下单日期连续，那么得到的结果应该是同一个日期）
+            date_sub(t1.create_date,rank() over(partition by t1.user_id order by t1.create_date)) as sub_date
+        from (
+            --先对用户的下单日期进行去重，保证一个用户一天的所有下单记录只保留一次
+            select
+                user_id,
+                create_date
+            from order_info
+            group by user_id,create_date
+        ) t1
+    ) t2
+) t3
+--通过where过滤出那些连续天数大于等于n的用户
+where t3.ct>=n; --n是自己定义的连续天数
+```
+
+### 
+
+
+
 
 ## 高级
